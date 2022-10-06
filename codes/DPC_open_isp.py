@@ -43,12 +43,16 @@ class DPC:
                 p7 = img_padded[y + 4, x + 2]
                 p8 = img_padded[y + 4, x + 4]
                 
-                """p0 is good if pixel value is between min and max of a 3x3 neighborhhood."""
+                """p0 is good if pixel value is between min and max of a 5x5 neighborhhood."""
                 
                 if not(min([p1, p2, p3, p4, p5, p6, p7, p8]) < p0 < max([p1, p2, p3, p4, p5, p6, p7, p8])):     
+                    
+                    """ p0 is corrected only if the difference of p0 and every adjacent pixel is greater than the speciified threshold."""
+                    
                     if (abs(int(p1) - int(p0)) > self.threshold) and (abs(int(p2) - int(p0)) > self.threshold) and (abs(int(p3) - int(p0)) > self.threshold) \
                             and (abs(int(p4) - int(p0)) > self.threshold) and (abs(int(p5) - int(p0)) > self.threshold) and (abs(int(p6) - int(p0)) > self.threshold) \
                             and (abs(int(p7) - int(p0)) > self.threshold) and (abs(int(p8) - int(p0)) > self.threshold):
+                        
                         if self.mode == 'mean':
                             p0 = (p2 + p4 + p5 + p7) / 4
                         elif self.mode == 'gradient':

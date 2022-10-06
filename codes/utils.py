@@ -7,10 +7,10 @@ import colour_demosaicing as cd
 
 def introduce_defect(img, total_defective_pixels, padding):
     
-    """Randomly replaces pixels values with extremely high or low pixel values to create dead pixels.
-     Note that the defect is never introduced on the periphery of the image. 
-     The function returns defective image: image containing 0.5% dead pixels, mask: bool array with 1 
-     indicating dead pixels, orig_val: containing original values of the dead pixels introduced."""
+    """This function randomly replaces pixels values with extremely high or low pixel values to create dead pixels.
+    Note that the defect is never introduced on the periphery image to ensure that there are no adjacent DPs. 
+    The function returns defective image: image containing specified (by TOTAL_DEFECTIVE_PIXELS) 
+    number of dead pixels, orig_val: containing original values of the dead pixels introduced."""
     
     if padding:
         padded_img = np.pad(img, ((2,2), (2,2)), "symmetric")
@@ -37,6 +37,9 @@ def introduce_defect(img, total_defective_pixels, padding):
 #########################################################################################################
 
 def Evaluation(true_img, pred_img, true_mask, pred_mask):
+    
+    """This function computes and returns the confusion matrix and MSE of a single DPC corrected image."""
+
     assert np.size(true_mask)==np.size(pred_mask), "Sizes of the input images must match."
     
     # Compute error
@@ -60,7 +63,7 @@ def Evaluation(true_img, pred_img, true_mask, pred_mask):
     return conf_mat
 
 #######################################################################################################
-
+# Object to compile results in a csv file
 class Results:
     def __init__(self):
         self.confusion_pd = pd.DataFrame(np.zeros((1,6)), columns=["Filename", "TN", "FP","FN", "TP", "MSE"])
@@ -72,6 +75,7 @@ class Results:
         self.confusion_pd.to_csv(path + "/" +filename + ".csv", index=False)
 
 #########################################################################################################
+# Functions to display RGB image.
 
 def demosaic_raw(img, bayer):
 
@@ -113,6 +117,7 @@ def gamma(img):
     return img.astype("uint8")    
 
 ####################################################################################
+# Object to record FPs in a csv file. 
 class FPs:
     def __init__(self):
         self.FPs_pd = pd.DataFrame(np.zeros((1,9)), columns=["x-coord_p1", "y-coord_p1","loc","loc","loc", "val","val","val", "corrected_value"])
@@ -123,13 +128,18 @@ class FPs:
     def save_csv(self, path, filename):
         self.FPs_pd.to_csv(path + "/" +filename + ".csv", index=False)
 
-#######################
+####################################################################################
 from pathlib import Path
 
-def save_FPs_as_csv(orig_img_arr, gt_arr, mask_arr, save_path, FPs_to_save):
+def save_FPs_as_csv(orig_img_arr, gt_arr, mask_arr, save_path, total_fp):
+    
+    """This function identifies a FP and saves its 5x5 neighborhood in a csv file along
+    with the coordinates of the top left pixel (p1).The total number of FPs saved can be 
+    specified using TOTAL_FP"""
+
     save_pd = FPs()
-    for i in range(FPs_to_save):#(2, gt_arr.shape[0]-2):
-        for j in range(FPs_to_save):#(2, gt_arr.shape[1]-2):
+    for i in range(total_fp):#(2, gt_arr.shape[0]-2):
+        for j in range(total_fp):#(2, gt_arr.shape[1]-2):
 
             FP_flag = True if gt_arr[i+2,j+2]==0 and mask_arr[i+2,j+2]>0 else False
             if FP_flag:
@@ -143,6 +153,7 @@ def save_FPs_as_csv(orig_img_arr, gt_arr, mask_arr, save_path, FPs_to_save):
                 p7 = orig_img_arr[i + 4, j + 2] # bottom row mid
                 p8 = orig_img_arr[i + 4, j + 4] # bottom right
 
+                # Pixel values are saved after Black level correction
                 neighbors = np.array([[i, j,"p1", "p2", "p3", p1-200, p2-200, p3-200, mask_arr[i+2,j+2]], 
                                      ["","","p4", "p0", "p5", p4-200, p0-200, p5-200, "" ],
                                      ["","","p6", "p7", "p8", p6-200 ,p7-200, p8-200, ""], 
