@@ -71,6 +71,7 @@ class DPC:
                             else:
                                 p0 = (p3 + p6) / 2
                 
+                """Corrected pixels are placed in non-padded image."""
                 dpc_img[y, x] = p0
                 if self.img[y, x]!=p0:
                     self.mask[y, x] = p0
