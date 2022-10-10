@@ -19,62 +19,68 @@ class DPC:
     def clipping(self, clip):
         if np.amax(self.img.copy().ravel())>4095 or np.amin(self.img.copy().ravel())<0:
             print("clipping after DPC")
-        np.clip(self.img, 0, clip, out=self.img)
+        self.img = np.uint16(np.clip(self.img, 0, clip, out=self.img))
         return self.img
     
     def execute(self):
         
         """Replace the dead pixel value with corrected pixel value and returns 
         the corrected image."""
-        
-        img_padded = self.padding()
+        # Mirror padding is applied to self.img.
+        img_padded = np.float32(self.padding())
         self.mask = np.zeros((self.img.shape[0], self.img.shape[1])).astype("uint16")
-        dpc_img   = np.empty((self.img.shape[0], self.img.shape[1]), np.uint16)     # size of the original image without padding
+        dpc_img   = np.empty((self.img.shape[0], self.img.shape[1]), np.float32)     # size of the original image without padding
         
         for y in range(img_padded.shape[0] - 4):        # looping over padded image
             for x in range(img_padded.shape[1] - 4):
-                p0 = img_padded[y + 2, x + 2]
-                p1 = img_padded[y, x]
-                p2 = img_padded[y, x + 2]
-                p3 = img_padded[y, x + 4]
-                p4 = img_padded[y + 2, x]
-                p5 = img_padded[y + 2, x + 4]
-                p6 = img_padded[y + 4, x]
-                p7 = img_padded[y + 4, x + 2]
-                p8 = img_padded[y + 4, x + 4]
+                top_left  = img_padded[y, x]
+                top_mid   = img_padded[y, x + 2]
+                top_right = img_padded[y, x + 4]
                 
-                """p0 is good if pixel value is between min and max of a 5x5 neighborhhood."""
+                left_of_center_pixel  = img_padded[y + 2, x]
+                center_pixel          = img_padded[y + 2, x + 2]    # pixel under test
+                right_of_center_pixel = img_padded[y + 2, x + 4]
                 
-                if not(min([p1, p2, p3, p4, p5, p6, p7, p8]) < p0 < max([p1, p2, p3, p4, p5, p6, p7, p8])):     
+                bottom_right = img_padded[y + 4, x]
+                bottom_mid   = img_padded[y + 4, x + 2]
+                bottom_left  = img_padded[y + 4, x + 4]
+                
+                neighbors    = np.array([top_left, top_mid, top_right, left_of_center_pixel, right_of_center_pixel,
+                                bottom_right, bottom_mid, bottom_left])
+
+                # center_pixel is good if pixel value is between min and max of a 3x3 neighborhhood.
+                if not(min(neighbors) < center_pixel < max(neighbors)):
                     
-                    """ p0 is corrected only if the difference of p0 and every adjacent pixel is greater than the speciified threshold."""
+                    # ""center_pixel is corrected only if the difference of center_pixel and every 
+                    # neighboring pixel is greater than the speciified threshold.
+                    # The two if conditions are used in combination to reduce False positives.""
                     
-                    if (abs(int(p1) - int(p0)) > self.threshold) and (abs(int(p2) - int(p0)) > self.threshold) and (abs(int(p3) - int(p0)) > self.threshold) \
-                            and (abs(int(p4) - int(p0)) > self.threshold) and (abs(int(p5) - int(p0)) > self.threshold) and (abs(int(p6) - int(p0)) > self.threshold) \
-                            and (abs(int(p7) - int(p0)) > self.threshold) and (abs(int(p8) - int(p0)) > self.threshold):
+                    diff_with_center_pixel = abs(neighbors-center_pixel)
+                    thresh                 = np.full_like(diff_with_center_pixel, self.threshold)
+                    
+                    if np.all(diff_with_center_pixel > thresh):
+                        # Compute gradients
+                        vertical_grad       = abs(2 * center_pixel - top_mid - bottom_mid)
+                        horizontal_grad     = abs(2 * center_pixel - left_of_center_pixel - right_of_center_pixel)
+                        left_diagonal_grad  = abs(2 * center_pixel - top_left - bottom_left)
+                        right_diagonal_grad = abs(2 * center_pixel - top_right - bottom_right)
                         
-                        if self.mode == 'mean':
-                            p0 = (p2 + p4 + p5 + p7) / 4
-                        elif self.mode == 'gradient':
-                            
-                            dv = abs(2 * int(p0) - int(p2) - int(p7))
-                            dh = abs(2 * int(p0) - int(p4) - int(p5))
-                            ddl = abs(2 * int(p0) - int(p1) - int(p8))
-                            ddr = abs(2 * int(p0) - int(p3) - int(p6))
-                            
-                            if (min(dv, dh, ddl, ddr) == dv):
-                                p0 = (p2 + p7) / 2
-                            elif (min(dv, dh, ddl, ddr) == dh):
-                                p0 = (p4 + p5) / 2
-                            elif (min(dv, dh, ddl, ddr) == ddl):
-                                p0 = (p1 + p8) / 2
-                            else:
-                                p0 = (p3 + p6) / 2
+                        min_grad = min(vertical_grad, horizontal_grad, left_diagonal_grad, right_diagonal_grad)
+                        
+                        # Correct value is computed using neighbors in the direction of minimum gradient. 
+                        if ( min_grad == vertical_grad):
+                            center_pixel = (top_mid + bottom_mid) / 2
+                        elif (min_grad == horizontal_grad):
+                            center_pixel = (left_of_center_pixel + right_of_center_pixel) / 2
+                        elif (min_grad == left_diagonal_grad):
+                            center_pixel = (top_left + bottom_left) / 2
+                        else:
+                            center_pixel = (top_right + bottom_right) / 2
                 
                 """Corrected pixels are placed in non-padded image."""
-                dpc_img[y, x] = p0
-                if self.img[y, x]!=p0:
-                    self.mask[y, x] = p0
+                dpc_img[y, x] = center_pixel
+                if self.img[y, x]!=center_pixel:
+                    self.mask[y, x] = center_pixel
         
         self.img = dpc_img
         return self.clipping(4095)      # not needed as all the corrected values are within 12 bit scale.       

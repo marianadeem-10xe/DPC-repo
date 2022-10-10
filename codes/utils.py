@@ -162,3 +162,15 @@ def save_FPs_as_csv(orig_img_arr, gt_arr, mask_arr, save_path, total_fp):
             
     save_pd.save_csv(str(Path(save_path).parent),Path(save_path).stem) 
 ####################################################################################    
+
+def crop_to_1920x1080(img):
+    
+    """Chops off the sides of the input image using array slicing and returns 
+    the img of size 1920x1080."""
+
+    crop_cols = (img.shape[1]-1920)  
+    crop_rows = (img.shape[0]-1080)
+    print(img.shape[1], crop_cols//2)
+    assert crop_cols!=0 or crop_rows!=0, "Image size must be greater than 1080x1920." 
+    return img[crop_rows//2:-crop_rows//2,crop_cols//2:-crop_cols//2]
+
